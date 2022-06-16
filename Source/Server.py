@@ -7,6 +7,7 @@
 | =============================== """
 
 import json
+import sqlite3
 from ast import literal_eval
 from flask import Flask, request, send_file
 #from APIConfig import *
@@ -30,11 +31,11 @@ def WriteFile(p, c):
 		print("Error writing file {}".format(p))
 		return False
 
-def SetConfig():
+def GetConfig():
 	Config = {
 		'Development': False,
 		'Port': 8080}
-	File = ReadFile('Config.json') 
+	File = ReadFile('Config.json')
 	if File:
 		File = json.loads(File)
 		for i in File:
@@ -42,10 +43,18 @@ def SetConfig():
 				Config[i] = File[i]
 	return Config
 
+def InitDB():
+	for i in ReadFile('Source/Comments.sql').split(';'):
+		DB.cursor().execute(i)
+	DB.commit()
+
+def GetDB():
+	return sqlite3.connect('Comments.db')
+
 def GetComments():
 	return [0,0,0]
 
-def PatchHTML():
+def PatchHTML(Data):
 	Base = ReadFile('Source/Main.html')
 	FormMain = ReadFile('Source/Form.Main.html')
 	FormComment = ReadFile('Source/Form.Comment.html')
@@ -60,17 +69,11 @@ def PatchHTML():
 	return Base.format(FormMain + Comments)
 
 def Get(Req):
-	Data = Req.args
-	print(Data.get('Site'))
-	print(Data.get('Page'))
-	print(Data.get('User'))
-	print(Data.get('CAPTCHA'))
-	print(Data.get('Comment'))
-	print(Data.get('SecretKey'))
-	print(Data.get('Action'))
-	print(Data.get('Reply'))
-	print(Data.get('Report'))
-	return PatchHTML()
+	Data = {}
+	for i in ['Site','Page','User','CAPTCHA','Comment','SecretKey','Select','Action','Reply','Report']:
+		Data.update({i:Req.args.get(i)})
+		print(Req.args.get(i))
+	return PatchHTML(Data)
 
 def Post(Req):
 	Data = Req.get_json()
@@ -89,7 +92,9 @@ def Comments():
 		return Post(Req)
 
 if __name__ == '__main__':
-	Config = SetConfig()
+	Config = GetConfig()
+	DB = GetDB()
+	InitDB()
 
 	if Config['Development']:
 		App.run(host='0.0.0.0', port=Config['Port'], debug=True)
