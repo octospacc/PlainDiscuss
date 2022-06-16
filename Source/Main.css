@@ -1,6 +1,7 @@
 Input, TextArea {
-	Width: 100%;
+	//Width: 100%;
 }
+/*
 Span {
     Display: Block;
     Overflow: Hidden;
@@ -9,6 +10,7 @@ Label{
     Float: Left;
 	Padding-Right: 8px;
 }
+*/
 TextArea {
 	Width: 100%;
 	Height: 30%;

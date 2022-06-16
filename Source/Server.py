@@ -42,19 +42,51 @@ def SetConfig():
 				Config[i] = File[i]
 	return Config
 
-def HandlePost(Req):
+def GetComments():
+	return [0,0,0]
+
+def PatchHTML():
+	Base = ReadFile('Source/Main.html')
+	FormMain = ReadFile('Source/Form.Main.html')
+	FormComment = ReadFile('Source/Form.Comment.html')
+
+	Comments = ''
+	for i in GetComments():
+		Comments += "\n<br><hr>\n" + FormComment.format(
+			User="User",
+			Date="Date",
+			ID="ID")
+
+	return Base.format(FormMain + Comments)
+
+def Get(Req):
+	Data = Req.args
+	print(Data.get('Site'))
+	print(Data.get('Page'))
+	print(Data.get('User'))
+	print(Data.get('CAPTCHA'))
+	print(Data.get('Comment'))
+	print(Data.get('SecretKey'))
+	print(Data.get('Action'))
+	print(Data.get('Reply'))
+	print(Data.get('Report'))
+	return PatchHTML()
+
+def Post(Req):
 	Data = Req.get_json()
+	print(Data)
 
-@App.route('/Test.html')
-def Test():
-	return send_file('Test.html')
+@App.route('/Main.css')
+def SendCSS():
+	return send_file('Main.css')
 
-@App.route('/Comments', methods=['GET' 'POST'])
+@App.route('/Comments', methods=['GET', 'POST'])
 def Comments():
-	if request.method == 'GET':
-		pass
-	if request.method == 'POST':
-		return HandlePost(request)
+	Req = request
+	if Req.method == 'GET':
+		return Get(Req)
+	if Req.method == 'POST':
+		return Post(Req)
 
 if __name__ == '__main__':
 	Config = SetConfig()
