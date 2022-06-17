@@ -4,8 +4,12 @@
 	"DoDelete": "Delete",
 	"DoReply": "Reply",
 	"Reply": "Reply",
-	"SecretKey": "Secret Key",
+	"SecKey": "Secret Key",
 	"Optional": "Optional",
 	"YourName": "Your Name",
-	"DoPost": "Post as New Comment"
+	"DoPost": "Post as New Comment",
+	"Management": "Management",
+	"AddSite": "Add New Site",
+	"DelSite": "DELETE SITE",
+	"DangerZone": "Danger Zone"
 } 

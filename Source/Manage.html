@@ -1,6 +1,31 @@
 <html>
 <head>
+	<link rel="stylesheet" href="Main.css">
 </head>
 <body>
+	<h3>PlainDiscuss > [Locale:Management]</h3>
+	<div id="StatusGoodDiv">
+{StatusGood}
+	</div>
+	<div id="StatusErrorDiv">
+{StatusError}
+	</div>
+	<form action="/Manage" method="POST">
+		<input type="hidden" name="Lang" value="{Lang}">
+		<div>
+			<button type="submit" name="Action" value="AddSite">[Locale:AddSite]</button>
+		</div>
+		<br>
+		<div>
+			<details>
+				<summary>[Locale:DangerZone]</summary>
+				<p>Are you sure? This will delete ALL comments from the Database! THERE IS NO GOING BACK!</p>
+				<label>[Locale:SecKey]:</label>
+				<span><input type="password" name="SecKey"></span>
+				<br><br>
+				<button type="submit" name="Action" value="DelSite">[Locale:DelSite]</button>
+			</details>
+		</div>
+	</form>
 </body>
 </html>

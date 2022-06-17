@@ -4,8 +4,12 @@
 	"DoDelete": "Cancella",
 	"DoReply": "Rispondi",
 	"Reply": "Risposta",
-	"SecretKey": "Chiave Segreta",
+	"SecKey": "Chiave Segreta",
 	"Optional": "Opzionale",
 	"YourName": "Il tuo Nome",
-	"DoPost": "Pubblica come Nuovo Commento"
+	"DoPost": "Pubblica come Nuovo Commento",
+	"Management": "Gestione",
+	"AddSite": "Aggiungi Nuovo Sito",
+	"DelSite": "CANCELLA SITO",
+	"DangerZone": "Zona Pericolosa"
 } 
