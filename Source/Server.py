@@ -8,9 +8,10 @@
 
 import json
 import sqlite3
+import time
 from ast import literal_eval
 from flask import Flask, request, send_file
-#from APIConfig import *
+from pathlib import Path
 
 App = Flask(__name__)
 
@@ -31,10 +32,20 @@ def WriteFile(p, c):
 		print("Error writing file {}".format(p))
 		return False
 
+def GetLocales():
+	Locales = {}
+	for File in Path('Locale').rglob('*.json'):
+		File = str(File)
+		Lang = File[len('Locale/'):-len('.json')]
+		Locale = json.loads(ReadFile(File))
+		Locales.update({Lang:Locale})
+	return Locales
+
 def GetConfig():
 	Config = {
 		'Development': False,
-		'Port': 8080}
+		'Port': 8080,
+		'Default Locale': 'en'}
 	File = ReadFile('Config.json')
 	if File:
 		File = json.loads(File)
@@ -51,33 +62,56 @@ def InitDB():
 def GetDB():
 	return sqlite3.connect('Comments.db')
 
-def GetComments():
-	return [0,0,0]
+def GetComments(Site, Page):
+	DB = GetDB()
+
+	SiteID = DB.cursor().execute('SELECT "ID" from "Sites" WHERE "PubKey" == "{}"'.format(Site))
+	PageID = DB.cursor().execute('SELECT "ID" FROM "Pages" WHERE "Site" == "{}" AND "Path" == "{}"'.format(SiteID, Page))
+	Comments = DB.cursor().execute('SELECT * FROM "Comments" WHERE "Page" == "{}"'.format(PageID))
+
+	DB.close()
+	return Comments
 
 def PatchHTML(Data):
-	Base = ReadFile('Source/Main.html')
+	FormBase = ReadFile('Source/Form.Base.html')
 	FormMain = ReadFile('Source/Form.Main.html')
 	FormComment = ReadFile('Source/Form.Comment.html')
 
+	if Data['Lang'] and Data['Lang'] in Locales:
+		Locale = Locales[Data['Lang']]
+	else:
+		Locale = Locales[Config['Default Locale']]
+
+	for String in Locale:
+		FormBase = FormBase.replace('[Locale:{}]'.format(String), Locale[String])
+		FormMain = FormMain.replace('[Locale:{}]'.format(String), Locale[String])
+		FormComment = FormComment.replace('[Locale:{}]'.format(String), Locale[String])
+
 	Comments = ''
-	for i in GetComments():
-		Comments += "\n<br><hr>\n" + FormComment.format(
+	for Comment in GetComments(Data['Site'], Data['Page']):
+		Comments += "\n<hr>\n" + FormComment.format(
 			User="User",
 			Date="Date",
-			ID="ID")
+			ID="ID",
+			Comment="Comment")
 
-	return Base.format(FormMain + Comments)
+	return FormBase.format(Style='',Form=FormMain+Comments)
 
 def Get(Req):
 	Data = {}
-	for i in ['Site','Page','User','CAPTCHA','Comment','SecretKey','Select','Action','Reply','Report']:
+	for i in ['Lang','StyleFile','Site','Page']:
 		Data.update({i:Req.args.get(i)})
-		print(Req.args.get(i))
 	return PatchHTML(Data)
 
 def Post(Req):
-	Data = Req.get_json()
-	print(Data)
+	Data = {}
+	for i in ['Lang','StyleFile','Site','Page','User','CAPTCHA','Comment','SecretKey','Action','Reply','Report','Delete']:
+		Data.update({i:Req.args.get(i)})
+	return PatchHTML(Data)
+
+@App.route('/Manage.html')
+def SendManage():
+	return send_file('Manage.html')
 
 @App.route('/Main.css')
 def SendCSS():
@@ -92,9 +126,12 @@ def Comments():
 		return Post(Req)
 
 if __name__ == '__main__':
+	Locales = GetLocales()
 	Config = GetConfig()
+
 	DB = GetDB()
 	InitDB()
+	DB.close()
 
 	if Config['Development']:
 		App.run(host='0.0.0.0', port=Config['Port'], debug=True)
