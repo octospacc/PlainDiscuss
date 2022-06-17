@@ -73,13 +73,65 @@ def GetDB():
 
 def GetComments(Site, Page):
 	DB = GetDB()
+	Comments = []
 
-	SiteID = DB.cursor().execute('SELECT "ID" from "Sites" WHERE "PubKey" == "{}"'.format(Site))
-	PageID = DB.cursor().execute('SELECT "ID" FROM "Pages" WHERE "Site" == "{}" AND "Path" == "{}"'.format(SiteID, Page))
-	Comments = DB.cursor().execute('SELECT * FROM "Comments" WHERE "Page" == "{}"'.format(PageID))
+	SiteID = DB.cursor().execute('SELECT "ID" FROM "Sites" WHERE "PubKey" == "{}"'.format(Site)).fetchall()[0][0]
+	PageID = DB.cursor().execute('SELECT "ID" FROM "Pages" WHERE "Site" == "{}" AND "Path" == "{}"'.format(SiteID, Page)).fetchall()
+	if PageID:
+		PageID = PageID[0][0]
+		Comments = DB.cursor().execute('SELECT * FROM "Comments" WHERE "Page" == "{}"'.format(PageID)).fetchall()
 
 	DB.commit()
 	return Comments
+
+def PostComment(Site, Page, Comment, User, SecKey, Reply):
+	DB = GetDB()
+
+	SiteID = DB.cursor().execute('SELECT "ID" FROM "Sites" WHERE "PubKey" == "{}"'.format(Site)).fetchall()[0][0]
+	PageID = DB.cursor().execute('SELECT "ID" FROM "Pages" WHERE "Site" == "{}" AND "Path" == "{}"'.format(SiteID, Page)).fetchall()
+	if PageID:
+		PageID = PageID[0][0]
+	else:
+		DB.cursor().execute('INSERT INTO "Pages"("Site", "Path") VALUES("{}", "{}")'.format(SiteID, Page))
+		PageID = DB.cursor().execute('SELECT "ID" FROM "Pages" WHERE "Site" == "{}" AND "Path" == "{}"'.format(SiteID, Page)).fetchall()[0][0]
+	UserID = DB.cursor().execute('SELECT "ID" FROM "Users" WHERE "Name" == "{}" AND "SecKey" == "{}"'.format(User, SecKey)).fetchall()
+	if UserID:
+		UserID = UserID[0][0]
+	else:
+		DB.cursor().execute('INSERT INTO "Users"("Name", "SecKey") VALUES("{}", "{}")'.format(User, SecKey))
+		UserID = DB.cursor().execute('SELECT "ID" FROM "Users" WHERE "Name" == "{}" AND "SecKey" == "{}"'.format(User, SecKey)).fetchall()[0][0]
+
+	DB.cursor().execute('INSERT INTO "Comments"("User", "Page", "Reply", "Date", "Comment") VALUES("{}", "{}", "{}", "{}", "{}")'.format(UserID, PageID, Reply, time.time(), Comment))
+	DB.commit()
+
+	print(UserID, PageID, Reply, time.time(), Comment)
+
+def PostCommentData(Data):
+	Good, Error = "", ""
+	Missing = []
+	for i in ['User', 'Comment']:
+		if not (i in Data and Data[i]):
+			Missing += [i]
+	if len(Missing) > 0:
+		Error = """\
+<p>
+	Some fields are missing:
+	<br>
+	{}
+</p>""".format(Missing)
+	else:
+		#try:
+		PostComment(
+			Data['Site'], Data['Page'], Data['Comment'], Data['User'],
+			Data['SecKey'] if 'SecKey' in Data and Data['SecKey'] else secrets.token_urlsafe(64),
+			Data['Reply'] if 'Reply' in Data and Data['Reply'] else None)
+		Good = """\
+<p>
+	Your comment has been posted!
+</p>"""
+		#except Exception:
+		#	Error = "<p>Server error. Please try again later.</p>"
+	return Good, Error
 
 def PatchCommentsHTML(Data):
 	FormBase = ReadFile('Source/Form.Base.html')
@@ -94,17 +146,30 @@ def PatchCommentsHTML(Data):
 		FormComment = FormComment.replace('[Locale:{}]'.format(String), Locale[String])
 
 	FormMain = FormMain.format(
-		SecKey=Data['SecKey'] if Data['SecKey'] else '',
-		User=Data['User'] if Data['User'] else '',
-		Comment=Data['Comment'] if Data['Comment'] else '')
+		SecKey=Data['SecKey'] if 'SecKey' in Data and Data['SecKey'] else '',
+		User=Data['User'] if 'User' in Data and Data['User'] else '',
+		Comment=Data['Comment'] if 'Comment' in Data and Data['Comment'] else '')
+
+	if 'Action' in Data and Data['Action']:
+		if Data['Action'] == 'Login':
+			Good, Error = '', ''
+		elif Data['Action'] == 'Post':
+			Good, Error = PostCommentData(Data)
+	elif 'Reply' in Data and Data['Reply']:
+		Good, Error = PostCommentData(Data)
+	elif 'Delete' in Data and Data['Delete']:
+		Good, Error = '', ''
+	else:
+		Good, Error = '', ''
 
 	Comments = ''
-	for Comment in GetComments(Data['Site'], Data['Page']):
+	for ID,User,Page,Reply,Date,Comment in GetComments(Data['Site'], Data['Page']):
+		print(Comment)
 		Comments += "\n<hr>\n" + FormComment.format(
-			User="User",
-			Date="Date",
-			ID="ID",
-			Comment="Comment")
+			User=User,
+			Date=Date,
+			ID=ID,
+			Comment=Comment)
 
 	return FormBase.format(
 		Lang=Data['Lang'] if Data['Lang'] else '',
@@ -112,28 +177,20 @@ def PatchCommentsHTML(Data):
 		Site=Data['Site'] if Data['Site'] else '',
 		Page=Data['Page'] if Data['Page'] else '',
 		Form=FormMain+Comments,
-		StatusGood='',
-		StatusError='')
-
-def CommentsGet(Req):
-	Data = {}
-	for i in ['Lang','StyleFile','Site','Page']:
-		Data.update({i:Req.args.get(i)})
-	return PatchCommentsHTML(Data)
-
-def CommentsPost(Req):
-	Data = {}
-	for i in ['Lang','StyleFile','Site','Page','User','CAPTCHA','Comment','SecKey','Action','Reply','Report','Delete']:
-		Data.update({i:Req.form.get(i)})
-	return PatchCommentsHTML(Data)
+		StatusGood=Good,
+		StatusError=Error)
 
 @App.route('/Comments', methods=['GET', 'POST'])
 def Comments():
 	Req = request
+	Data = {}
 	if Req.method == 'GET':
-		return CommentsGet(Req)
+		for i in ['Lang','StyleFile','Site','Page']:
+			Data.update({i:Req.args.get(i)})
 	if Req.method == 'POST':
-		return CommentsPost(Req)
+		for i in ['Lang','StyleFile','Site','Page','User','CAPTCHA','Comment','SecKey','Action','Reply','Report','Delete']:
+			Data.update({i:Req.form.get(i)})
+	return PatchCommentsHTML(Data)
 
 @App.route('/Main.css')
 def SendCSS():
@@ -178,34 +235,18 @@ def PatchManageHTML(Data):
 		Good, Error = '', ''
 
 	return HTML.format(
-		Lang=Data['Lang'] if Data['Lang'] else '',
+		Lang=Data['Lang'] if 'Lang' in Data and Data['Lang'] else '',
 		StatusGood=Good,
 		StatusError=Error)
-
-"""
-def ManageGet(Req):
-	Data = {}
-	for i in ['Lang']:
-		Data.update({i:Req.args.get(i)})
-	return PatchManageHTML(Data)
-
-def ManagePost(Req):
-	Data = {}
-	for i in ['Lang', 'Action']:
-		Data.update({i:Req.form.get(i)})
-	return PatchManageHTML(Data)
-"""
 
 @App.route('/Manage', methods=['GET', 'POST'])
 def SendManage():
 	Req = request
 	Data = {}
 	if Req.method == 'GET':
-		#return ManageGet(Req)
 		for i in ['Lang']:
 			Data.update({i:Req.args.get(i)})
 	elif Req.method == 'POST':
-		#return ManagePost(Req)
 		for i in ['Lang', 'Action']:
 			Data.update({i:Req.form.get(i)})
 	return PatchManageHTML(Data)
@@ -213,11 +254,8 @@ def SendManage():
 if __name__ == '__main__':
 	Locales = GetLocales()
 	Config = GetConfig()
-
-	#DB = sqlite3.connect('Comments.db')
 	DB = GetDB()
 	InitDB()
-	#DB.close()
 
 	if Config['Development']:
 		App.run(host='0.0.0.0', port=Config['Port'], debug=True)
