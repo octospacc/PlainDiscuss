@@ -7,18 +7,23 @@
 | =============================== """
 
 import json
+import os
+import random
 import secrets
 import sqlite3
 import time
 from ast import literal_eval
+from base64 import b64encode
 from flask import Flask, request, send_file
 from pathlib import Path
+from captcha.audio import AudioCaptcha
+from captcha.image import ImageCaptcha
 
 App = Flask(__name__)
 
-def ReadFile(p):
+def ReadFile(p, m='r'):
 	try:
-		with open(p, 'r') as f:
+		with open(p, m) as f:
 			return f.read()
 	except Exception:
 		print("Error reading file {}".format(p))
@@ -53,7 +58,7 @@ def GetConfig():
 		'Development': False,
 		'Port': 8080,
 		'Default Locale': 'en',
-		'Antispam Time': 0}
+		'CAPTCHA': True}
 	File = ReadFile('Config.json')
 	if File:
 		File = json.loads(File)
@@ -70,6 +75,40 @@ def InitDB():
 def GetDB():
 	DB = sqlite3.connect('Comments.db')
 	return DB
+
+def RandomWord():
+	Words = ReadFile('CAPTCHA/it.txt')
+	Word = '#'
+	while Word.startswith('#'):
+		Word = random.choice(Words.splitlines())
+	return Word.lower()
+
+def MakeCAPTCHA(ID):
+	#ID = time.time()
+	String = RandomWord()
+	Audio = AudioCaptcha(voicedir='CAPTCHA/it')
+	Image = ImageCaptcha(fonts=['CAPTCHA/OpenDyslexic3-Regular.ttf'],width=len(String)*40, height=90)
+	CAPTCHA = Audio.generate(String)
+	Audio.write(String, 'CAPTCHA.{}.wav'.format(ID))
+	CAPTCHA = Image.generate(String)
+	Image.write(String, 'CAPTCHA.{}.png'.format(ID))
+	#return ID
+
+def CAPTCHAHTML(ID):
+	#ID = MakeCAPTCHA()
+	MakeCAPTCHA(ID)
+	Audio = b64encode(ReadFile('CAPTCHA.{}.wav'.format(ID), 'rb'))
+	Image = b64encode(ReadFile('CAPTCHA.{}.png'.format(ID), 'rb'))
+	os.remove('CAPTCHA.{}.wav'.format(ID))
+	os.remove('CAPTCHA.{}.png'.format(ID))
+	return """\
+<label>CAPTCHA:</label>
+<br>
+<img src="data:image/png;base64,{}">
+<audio src="data:audio/wav;base64,{}"controls="controls"></audio>
+<br>
+<span><input type="text" name="CAPTCHA"></span>
+	""".format(Image.decode('UTF-8'), Audio.decode('UTF-8'))
 
 def GetComments(Site, Page):
 	DB = GetDB()
@@ -134,6 +173,7 @@ def PostCommentData(Data):
 	return Good, Error
 
 def PatchCommentsHTML(Data):
+	ReqID = time.time()
 	FormBase = ReadFile('Source/Form.Base.html')
 	FormMain = ReadFile('Source/Form.Main.html')
 	FormComment = ReadFile('Source/Form.Comment.html')
@@ -145,22 +185,26 @@ def PatchCommentsHTML(Data):
 		FormMain = FormMain.replace('[Locale:{}]'.format(String), Locale[String])
 		FormComment = FormComment.replace('[Locale:{}]'.format(String), Locale[String])
 
-	FormMain = FormMain.format(
-		SecKey=Data['SecKey'] if 'SecKey' in Data and Data['SecKey'] else '',
-		User=Data['User'] if 'User' in Data and Data['User'] else '',
-		Comment=Data['Comment'] if 'Comment' in Data and Data['Comment'] else '')
-
-	if 'Action' in Data and Data['Action']:
-		if Data['Action'] == 'Login':
-			Good, Error = '', ''
-		elif Data['Action'] == 'Post':
-			Good, Error = PostCommentData(Data)
-	elif 'Reply' in Data and Data['Reply']:
-		Good, Error = PostCommentData(Data)
-	elif 'Delete' in Data and Data['Delete']:
-		Good, Error = '', ''
+	if 'ReadOnly' in Data and Data['ReadOnly'] == 'True':
+		FormMain, Good, Error = '', '', ''
 	else:
-		Good, Error = '', ''
+		FormMain = FormMain.format(
+			CAPTCHAHTML=CAPTCHAHTML(ReqID) if Config['CAPTCHA'] else '',
+			SecKey=Data['SecKey'] if 'SecKey' in Data and Data['SecKey'] else '',
+			User=Data['User'] if 'User' in Data and Data['User'] else '',
+			Comment=Data['Comment'] if 'Comment' in Data and Data['Comment'] else '')
+
+		if 'Action' in Data and Data['Action']:
+			if Data['Action'] == 'Login':
+				Good, Error = '', ''
+			elif Data['Action'] == 'Post':
+				Good, Error = PostCommentData(Data)
+		elif 'Reply' in Data and Data['Reply']:
+			Good, Error = PostCommentData(Data)
+		elif 'Delete' in Data and Data['Delete']:
+			Good, Error = '', ''
+		else:
+			Good, Error = '', ''
 
 	Comments = ''
 	for ID,User,Page,Reply,Date,Comment in GetComments(Data['Site'], Data['Page']):
@@ -185,7 +229,7 @@ def Comments():
 	Req = request
 	Data = {}
 	if Req.method == 'GET':
-		for i in ['Lang','StyleFile','Site','Page']:
+		for i in ['Lang','StyleFile','Site','Page','ReadOnly']:
 			Data.update({i:Req.args.get(i)})
 	if Req.method == 'POST':
 		for i in ['Lang','StyleFile','Site','Page','User','CAPTCHA','Comment','SecKey','Action','Reply','Report','Delete']:
