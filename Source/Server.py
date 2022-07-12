@@ -105,7 +105,7 @@ def CAPTCHAHTML(ID):
 <label>CAPTCHA:</label>
 <br>
 <img src="data:image/png;base64,{}">
-<audio src="data:audio/wav;base64,{}"controls="controls"></audio>
+<audio src="data:audio/wav;base64,{}" controls="controls"></audio>
 <br>
 <span><input type="text" name="CAPTCHA"></span>
 	""".format(Image.decode('UTF-8'), Audio.decode('UTF-8'))
@@ -216,6 +216,7 @@ def PatchCommentsHTML(Data):
 			Comment=Comment)
 
 	return FormBase.format(
+		ReqID=ReqID,
 		Lang=Data['Lang'] if Data['Lang'] else '',
 		Style='',
 		Site=Data['Site'] if Data['Site'] else '',
